@@ -4,24 +4,24 @@ DB_NAME = "sovpadenie_test_function.db"
 def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE "Blitz" (
+    cursor.executescript('''CREATE TABLE "Blitz" (
                     "blitzid"	INTEGER,
                     "theme"	TEXT NOT NULL UNIQUE,
                     "difficult"	INTEGER DEFAULT 0,
                     PRIMARY KEY("blitzid" AUTOINCREMENT)
-                )
+                );
                     CREATE TABLE "Larks" (
                     "larkid"	INTEGER,
                     "theme"	TEXT NOT NULL UNIQUE,
                     "difficult"	INTEGER DEFAULT 0,
                     PRIMARY KEY("larkid" AUTOINCREMENT)
-                )
+                );
                     CREATE TABLE "Owls" (
                     "owlid"	INTEGER,
                     "theme"	TEXT NOT NULL UNIQUE,
                     "difficult"	INTEGER DEFAULT 0,
                     PRIMARY KEY("owlid" AUTOINCREMENT)
-                    )''')
+                    );''')
     conn.commit()
     conn.close()
 
@@ -44,6 +44,8 @@ def init_db():
         # Проверяем, есть ли данные в какой-либо таблице
         for table in tables:
             table_name = table[0]
+            if table_name == 'sqlite_sequence':
+                break
             cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
             count = cursor.fetchone()[0]
             if count > 0:
@@ -59,3 +61,7 @@ def init_db():
     finally:
         if conn:
             conn.close()
+
+
+
+init_db()

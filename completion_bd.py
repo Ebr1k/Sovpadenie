@@ -45,7 +45,7 @@ def init_db():
         for table in tables:
             table_name = table[0]
             if table_name == 'sqlite_sequence':
-                break
+                continue
             cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
             count = cursor.fetchone()[0]
             if count > 0:

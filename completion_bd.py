@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import pandas as pd
+import openpyxl
 DB_NAME = "sovpadenie_test_function.db"
 def create_db():
     conn = sqlite3.connect(DB_NAME)
@@ -64,4 +66,42 @@ def init_db():
 
 
 
+
+
+# Функция для добавления данных в таблицы
+def insert_data(table_name, theme_col, mark_col, diff_col):
+    # Чтение Excel-файла
+    df = pd.read_excel('темы для совпадений.xlsx', sheet_name='Лист1')
+
+    # Подключение к базе данных
+    conn = sqlite3.connect(DB_NAME)  # Укажите имя вашей БД
+    cursor = conn.cursor()
+    for _, row in df.iterrows():
+        theme = row[theme_col]
+        mark = row[mark_col]
+        difficult = row['difficult']
+
+        if mark == '+':
+            try:
+                cursor.execute(
+                    f'INSERT OR IGNORE INTO "{table_name}" (theme, difficult) VALUES (?, ?)',
+                    (theme, difficult)
+                )
+            except sqlite3.IntegrityError:
+                continue
+    # Сохраняем изменения и закрываем соединение
+    conn.commit()
+    conn.close()
+
+
+
+
+
+
+
+
 init_db()
+# Заполняем таблицы
+insert_data('Owls', 'theme', 'owl', 'difficult')
+insert_data('Larks', 'theme', 'larks', 'difficult')
+insert_data('Blitz', 'theme', 'blitz', 'difficult')

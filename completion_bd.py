@@ -6,24 +6,41 @@ DB_NAME = "sovpadenie_test_function.db"
 def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.executescript('''CREATE TABLE "Blitz" (
-                    "blitzid"	INTEGER,
-                    "theme"	TEXT NOT NULL UNIQUE,
-                    "difficult"	INTEGER DEFAULT 0,
-                    PRIMARY KEY("blitzid" AUTOINCREMENT)
-                );
-                    CREATE TABLE "Larks" (
-                    "larkid"	INTEGER,
-                    "theme"	TEXT NOT NULL UNIQUE,
-                    "difficult"	INTEGER DEFAULT 0,
-                    PRIMARY KEY("larkid" AUTOINCREMENT)
-                );
-                    CREATE TABLE "Owls" (
-                    "owlid"	INTEGER,
-                    "theme"	TEXT NOT NULL UNIQUE,
-                    "difficult"	INTEGER DEFAULT 0,
-                    PRIMARY KEY("owlid" AUTOINCREMENT)
-                    );''')
+    cursor.executescript('''CREATE TABLE Blitz (
+        blitzid INTEGER PRIMARY KEY AUTOINCREMENT,
+        theme TEXT NOT NULL UNIQUE,
+        difficult INTEGER DEFAULT 0
+        );
+        
+        CREATE TABLE Larks (
+            larkid INTEGER PRIMARY KEY AUTOINCREMENT,
+            theme TEXT NOT NULL UNIQUE,
+            difficult INTEGER DEFAULT 0
+        );
+        
+        CREATE TABLE Owls (
+            owlid INTEGER PRIMARY KEY AUTOINCREMENT,
+            theme TEXT NOT NULL UNIQUE,
+            difficult INTEGER DEFAULT 0
+        );
+        
+        CREATE TABLE Games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_number INTEGER NOT NULL UNIQUE,
+            username TEXT NOT NULL
+        );
+        
+        CREATE TABLE register (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_id INTEGER NOT NULL,
+            blitz_id INTEGER,
+            lark_id INTEGER,
+            owl_id INTEGER,
+            FOREIGN KEY(game_id) REFERENCES Games(id),
+            FOREIGN KEY(blitz_id) REFERENCES Blitz(blitzid),
+            FOREIGN KEY(lark_id) REFERENCES Larks(larkid),
+            FOREIGN KEY(owl_id) REFERENCES Owls(owlid)
+        );''')
     conn.commit()
     conn.close()
 
@@ -66,8 +83,6 @@ def init_db():
 
 
 
-
-
 # Функция для добавления данных в таблицы
 def insert_data(table_name, theme_col, mark_col, diff_col):
     # Чтение Excel-файла
@@ -92,13 +107,6 @@ def insert_data(table_name, theme_col, mark_col, diff_col):
     # Сохраняем изменения и закрываем соединение
     conn.commit()
     conn.close()
-
-
-
-
-
-
-
 
 init_db()
 # Заполняем таблицы

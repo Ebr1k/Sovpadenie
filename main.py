@@ -133,6 +133,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_theme_selection, pattern="^theme_"))
     application.add_handler(CallbackQueryHandler(handle_next_round, pattern="^next_round"))
+   # application.add_handler(CallbackQueryHandler(, pattern="^create"))
 
     application.run_polling()
 

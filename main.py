@@ -3,21 +3,22 @@ import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import asyncio
+import completion_bd
 
 # Настройки базы данных
 DB_NAME = "themes.db"
 
 
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS themes
-                     (id INTEGER PRIMARY KEY,
-                      category TEXT NOT NULL,
-                      theme_text TEXT NOT NULL,
-                      used INTEGER DEFAULT 0)''')
-    conn.commit()
-    conn.close()
+#def init_db():
+#    conn = sqlite3.connect(DB_NAME)
+#    cursor = conn.cursor()
+#    cursor.execute('''CREATE TABLE IF NOT EXISTS themes
+#                     (id INTEGER PRIMARY KEY,
+#                      category TEXT NOT NULL,
+#                      theme_text TEXT NOT NULL,
+#                      used INTEGER DEFAULT 0)''')
+#    conn.commit()
+#    conn.close()
 
 
 def get_themes(category, count=2):
@@ -125,7 +126,7 @@ async def handle_next_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    init_db()
+    completion_bd.init_db()
 
     application = Application.builder().token("8481141708:AAHBtJWBC6SqZYjpMWHEpXmYLpDi5Hv2BTw").build()
 

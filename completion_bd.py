@@ -67,12 +67,10 @@ def init_db():
                 continue
             cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
             count = cursor.fetchone()[0]
-            if count > 0:
-                print(f"В таблице {table_name} есть данные ({count} записей).")
-                return True
+            if count == 0:
+                mark_col = normalize_string(table_name)
+                insert_data(table_name, 'theme', mark_col, 'difficult')
 
-        print("Все таблицы пусты.")
-        return False
 
     except sqlite3.Error as e:
         print(f"Ошибка при работе с БД: {e}")
@@ -81,7 +79,11 @@ def init_db():
         if conn:
             conn.close()
 
-
+def normalize_string(s: str) -> str:
+    s = s.lower()
+    if s.endswith('s'):
+        s = s[:-1]
+    return s
 
 # Функция для добавления данных в таблицы
 def insert_data(table_name, theme_col, mark_col, diff_col):
@@ -108,8 +110,8 @@ def insert_data(table_name, theme_col, mark_col, diff_col):
     conn.commit()
     conn.close()
 
-init_db()
+#init_db()
 # Заполняем таблицы
-insert_data('Owls', 'theme', 'owl', 'difficult')
-insert_data('Larks', 'theme', 'larks', 'difficult')
-insert_data('Blitz', 'theme', 'blitz', 'difficult')
+#insert_data('Owls', 'theme', 'owl', 'difficult')
+#insert_data('Larks', 'theme', 'larks', 'difficult')
+#insert_data('Blitz', 'theme', 'blitz', 'difficult')

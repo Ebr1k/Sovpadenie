@@ -6,7 +6,7 @@ import asyncio
 import completion_bd
 
 # Настройки базы данных
-DB_NAME = "themes.db"
+DB_NAME = "sovpadenie_test_function.db"
 
 
 #def init_db():
@@ -48,7 +48,7 @@ def reset_all_themes():
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reset_all_themes()
+    #reset_all_themes()
     context.user_data['round'] = 1
     await show_round_themes(update, context)
 

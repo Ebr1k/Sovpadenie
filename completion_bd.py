@@ -7,19 +7,19 @@ def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.executescript('''CREATE TABLE Blitz (
-        blitzid INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         theme TEXT NOT NULL UNIQUE,
         difficult INTEGER DEFAULT 0
         );
         
         CREATE TABLE Larks (
-            larkid INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             theme TEXT NOT NULL UNIQUE,
             difficult INTEGER DEFAULT 0
         );
         
         CREATE TABLE Owls (
-            owlid INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             theme TEXT NOT NULL UNIQUE,
             difficult INTEGER DEFAULT 0
         );

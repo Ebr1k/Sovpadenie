@@ -2,26 +2,26 @@ import sqlite3
 import os
 import pandas as pd
 import openpyxl
-DB_NAME = "sovpadenie_test_function.db"
+DB_NAME = "sovpadenie_main.db"
 def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.executescript('''CREATE TABLE Blitz (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        theme TEXT NOT NULL UNIQUE,
-        difficult INTEGER DEFAULT 0
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            theme TEXT NOT NULL UNIQUE,
+            difficult BOOLEAN DEFAULT 0 CHECK (difficult IN (0, 1))
         );
         
         CREATE TABLE Larks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             theme TEXT NOT NULL UNIQUE,
-            difficult INTEGER DEFAULT 0
+            difficult BOOLEAN DEFAULT 0 CHECK (difficult IN (0, 1))
         );
         
         CREATE TABLE Owls (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             theme TEXT NOT NULL UNIQUE,
-            difficult INTEGER DEFAULT 0
+            difficult BOOLEAN DEFAULT 0 CHECK (difficult IN (0, 1))
         );
         
         CREATE TABLE Games (
@@ -30,16 +30,16 @@ def create_db():
             username TEXT NOT NULL
         );
         
-        CREATE TABLE register (
+        CREATE TABLE Register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             game_id INTEGER NOT NULL,
             blitz_id INTEGER,
             lark_id INTEGER,
             owl_id INTEGER,
             FOREIGN KEY(game_id) REFERENCES Games(id),
-            FOREIGN KEY(blitz_id) REFERENCES Blitz(blitzid),
-            FOREIGN KEY(lark_id) REFERENCES Larks(larkid),
-            FOREIGN KEY(owl_id) REFERENCES Owls(owlid)
+            FOREIGN KEY(blitz_id) REFERENCES Blitz(id),
+            FOREIGN KEY(lark_id) REFERENCES Larks(id),
+            FOREIGN KEY(owl_id) REFERENCES Owls(id)
         );''')
     conn.commit()
     conn.close()
@@ -63,7 +63,7 @@ def init_db():
         # Проверяем, есть ли данные в какой-либо таблице
         for table in tables:
             table_name = table[0]
-            if table_name == 'sqlite_sequence':
+            if table_name == 'sqlite_sequence' or table_name == 'Games' or table_name == 'Register':
                 continue
             cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
             count = cursor.fetchone()[0]
@@ -97,7 +97,10 @@ def insert_data(table_name, theme_col, mark_col, diff_col):
         theme = row[theme_col]
         mark = row[mark_col]
         difficult = row['difficult']
-
+        if difficult == '+':
+            difficult = 1
+        else:
+            difficult = 0
         if mark == '+':
             try:
                 cursor.execute(
@@ -109,9 +112,3 @@ def insert_data(table_name, theme_col, mark_col, diff_col):
     # Сохраняем изменения и закрываем соединение
     conn.commit()
     conn.close()
-
-#init_db()
-# Заполняем таблицы
-#insert_data('Owls', 'theme', 'owl', 'difficult')
-#insert_data('Larks', 'theme', 'larks', 'difficult')
-#insert_data('Blitz', 'theme', 'blitz', 'difficult')

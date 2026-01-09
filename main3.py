@@ -6,7 +6,7 @@ import asyncio
 import completion_bd
 
 # Настройки базы данных
-DB_NAME = "sovpadenie_test_function.db"
+DB_NAME = "sovpadenie_main.db"
 
 
 #def init_db():

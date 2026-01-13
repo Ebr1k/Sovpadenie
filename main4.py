@@ -49,41 +49,105 @@ def get_game_by_number(game_number, username):
     return game[0] if game else None
 
 
-def get_themes_for_game(game_id, category, count=2):
+def get_themes_for_game(game_id, category):
     """Получить темы для конкретной игры (учитывая уже использованные)"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    theme_id = category + "_id"
-    # Получаем ID уже использованных тем в этой игре
-    cursor.execute("""
-        SELECT ? FROM register 
-        WHERE game_id = ?
-    """, (theme_id, game_id,))
-    used_theme_ids = []
-    used_themes = cursor.fetchall()
-    """ for row in cursor.fetchall():
-        if row[0]: used_theme_ids.append(row[0])
-        if row[1]: used_theme_ids.append(row[1])
-        if row[2]: used_theme_ids.append(row[2])"""
 
-    # Если есть использованные темы, исключаем их
-    # if used_theme_ids:
-    #     placeholders = ','.join('?' * len(used_theme_ids))
-    #     cursor.execute(f"""
-    #         SELECT id, theme_text FROM themes
-    #         WHERE category = ? AND used = 0
-    #         AND id NOT IN ({placeholders})
-    #         LIMIT ?
-    #     """, (category, *used_theme_ids, count))
-    # else:
-    #     cursor.execute("""
-    #         SELECT id, theme_text FROM themes
-    #         WHERE category = ? AND used = 0
-    #         LIMIT ?
-    #     """, (category, count))
+    # Получаем ID уже использованных тем в этой игре для конкретной категории
+    # Используем f-строку для подстановки имени столбца (осторожно!)
+    column_name = f"{category}_id"
+    cursor.execute(f"""
+        SELECT {column_name} FROM register 
+        WHERE game_id = ? AND {column_name} IS NOT NULL
+    """, (game_id,))
 
+    # Собираем список использованных ID
+    used_themes = [row[0] for row in cursor.fetchall()]
 
-    themes = cursor.fetchall()
+    # Определяем таблицу для каждой категории
+    table_map = {
+        'owl': 'Owls',
+        'lark': 'Larks',
+        'blitz': 'Blitz'
+    }
+
+    table_name = table_map.get(category)
+    if not table_name:
+        conn.close()
+        return []
+
+    # Формируем условие для исключения использованных тем
+    exclude_condition = ""
+    params = []
+
+    if used_themes:
+        placeholders = ','.join(['?' for _ in used_themes])
+        exclude_condition = f"AND id NOT IN ({placeholders})"
+        params.extend(used_themes)
+
+    themes = []
+
+    # Для категорий owl и lark
+    if category in ['owl', 'lark']:
+        # ПЕРВЫЙ ЗАПРОС: случайная НЕсложная тема
+        query1 = f"""
+            SELECT id, theme, difficult
+            FROM {table_name}
+            WHERE difficult = 0 {exclude_condition}
+            ORDER BY RANDOM()
+            LIMIT 1
+        """
+
+        cursor.execute(query1, params)
+        theme1 = cursor.fetchone()
+
+        if theme1:
+            themes.append(theme1)
+
+            # ВТОРОЙ ЗАПРОС: случайная любая тема, но не такая же как первая
+            second_params = params.copy()
+            second_params.append(theme1[0])  # Добавляем ID первой темы
+
+            second_placeholders = ','.join(['?' for _ in second_params])
+            query2 = f"""
+                SELECT id, theme, difficult
+                FROM {table_name}
+                WHERE id NOT IN ({second_placeholders})
+                ORDER BY RANDOM()
+                LIMIT 1
+            """
+
+            cursor.execute(query2, second_params)
+            theme2 = cursor.fetchone()
+
+            if theme2:
+                themes.append(theme2)
+
+    # Для категории blitz
+    elif category == 'blitz':
+        # Один запрос на 6 случайных тем
+        params.append(6)  # Добавляем лимит
+
+        if used_themes:
+            query = f"""
+                SELECT id, theme, difficult
+                FROM {table_name}
+                WHERE id NOT IN ({placeholders})
+                ORDER BY RANDOM()
+                LIMIT ?
+            """
+        else:
+            query = f"""
+                SELECT id, theme, difficult
+                FROM {table_name}
+                ORDER BY RANDOM()
+                LIMIT ?
+            """
+
+        cursor.execute(query, params)
+        themes = cursor.fetchall()
+
     conn.close()
     return themes
 
@@ -263,10 +327,10 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Определяем категорию для раунда
     if round_number == 1 or 3:
         category = 'owl'
-        theme_type = 'match'
+        theme_type = 'owl'
     elif round_number == 2 or 4:
         category = 'lark'
-        theme_type = 'different'
+        theme_type = 'lark'
     else:
         category = 'blitz'
         theme_type = 'blitz'
@@ -279,8 +343,8 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = [
-        [InlineKeyboardButton(themes[0][1], callback_data=f"theme_{themes[0][0]}_{theme_type}"),
-         InlineKeyboardButton(themes[1][1], callback_data=f"theme_{themes[1][0]}_{theme_type}")]
+        [InlineKeyboardButton(themes[0][1], callback_data=f"theme_{themes[0][1]}_{theme_type}"),
+         InlineKeyboardButton(themes[1][1], callback_data=f"theme_{themes[1][1]}_{theme_type}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

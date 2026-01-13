@@ -325,26 +325,59 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Определяем категорию для раунда
-    if round_number == 1 or 3:
+    if round_number in (1, 4):
         category = 'owl'
         theme_type = 'owl'
-    elif round_number == 2 or 4:
+        required_themes = 2
+        show_choice = True  # Пользователь выбирает тему
+    elif round_number in (2, 5):
         category = 'lark'
         theme_type = 'lark'
-    else:
+        required_themes = 2
+        show_choice = True  # Пользователь выбирает тему
+    else:  # Раунды 5 и 6 - блиц
         category = 'blitz'
         theme_type = 'blitz'
+        required_themes = 6
+        show_choice = False  # Без выбора, просто показываем темы
 
     # Получаем темы для конкретной игры
     themes = get_themes_for_game(game_id, category)
 
-    if len(themes) < 2:
-        await update.message.reply_text("Недостаточно доступных тем для этого раунда!")
+    # Проверяем достаточно ли тем
+    if len(themes) < required_themes:
+        await update.message.reply_text(
+            f"Недостаточно доступных тем для этого раунда! Нужно {required_themes}, есть {len(themes)}")
         return
 
+    # Для блиц-раундов
+    if category == 'blitz':
+        # Сохраняем темы для этого раунда в контексте
+        context.user_data['blitz_themes'] = themes
+
+        # Формируем список тем для отображения
+        themes_text = "\n".join([f"{i + 1}. {theme[1]}" for i, theme in enumerate(themes[:6])])
+
+        # Создаем клавиатуру с одной кнопкой для запуска таймера
+        keyboard = [[InlineKeyboardButton("🚀 Запустить таймер (1 мин)", callback_data="start_blitz_timer")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Отправляем сообщение с темами
+        await update.message.reply_text(
+            f"⚡ Блиц-раунд {round_number}! ⚡\n\n"
+            f"Ваши темы:\n{themes_text}\n\n"
+            f"У вас есть 1 минута на все темы!\n"
+            f"Нажмите кнопку ниже, чтобы начать:",
+            reply_markup=reply_markup
+        )
+        return  # Выходим из функции, так как для блица не нужно показывать выбор
+
+    # Для обычных раундов (owl/lark) - показываем выбор темы
     keyboard = [
-        [InlineKeyboardButton(themes[0][1], callback_data=f"theme_{themes[0][1]}_{theme_type}"),
-         InlineKeyboardButton(themes[1][1], callback_data=f"theme_{themes[1][1]}_{theme_type}")]
+        [
+            InlineKeyboardButton(themes[0][1], callback_data=f"theme_{themes[0][0]}_{theme_type}"),
+            InlineKeyboardButton(themes[1][1], callback_data=f"theme_{themes[1][0]}_{theme_type}")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

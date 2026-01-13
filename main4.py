@@ -53,33 +53,35 @@ def get_themes_for_game(game_id, category, count=2):
     """Получить темы для конкретной игры (учитывая уже использованные)"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-
+    theme_id = category + "_id"
     # Получаем ID уже использованных тем в этой игре
     cursor.execute("""
-        SELECT blitz_id, lark_id, owl_id FROM register 
+        SELECT ? FROM register 
         WHERE game_id = ?
-    """, (game_id,))
+    """, (theme_id, game_id,))
     used_theme_ids = []
-    for row in cursor.fetchall():
+    used_themes = cursor.fetchall()
+    """ for row in cursor.fetchall():
         if row[0]: used_theme_ids.append(row[0])
         if row[1]: used_theme_ids.append(row[1])
-        if row[2]: used_theme_ids.append(row[2])
+        if row[2]: used_theme_ids.append(row[2])"""
 
     # Если есть использованные темы, исключаем их
-    if used_theme_ids:
-        placeholders = ','.join('?' * len(used_theme_ids))
-        cursor.execute(f"""
-            SELECT id, theme_text FROM themes 
-            WHERE category = ? AND used = 0 
-            AND id NOT IN ({placeholders})
-            LIMIT ?
-        """, (category, *used_theme_ids, count))
-    else:
-        cursor.execute("""
-            SELECT id, theme_text FROM themes 
-            WHERE category = ? AND used = 0 
-            LIMIT ?
-        """, (category, count))
+    # if used_theme_ids:
+    #     placeholders = ','.join('?' * len(used_theme_ids))
+    #     cursor.execute(f"""
+    #         SELECT id, theme_text FROM themes
+    #         WHERE category = ? AND used = 0
+    #         AND id NOT IN ({placeholders})
+    #         LIMIT ?
+    #     """, (category, *used_theme_ids, count))
+    # else:
+    #     cursor.execute("""
+    #         SELECT id, theme_text FROM themes
+    #         WHERE category = ? AND used = 0
+    #         LIMIT ?
+    #     """, (category, count))
+
 
     themes = cursor.fetchall()
     conn.close()
@@ -194,11 +196,11 @@ async def handle_game_number_input(update: Update, context: ContextTypes.DEFAULT
             round_count = cursor.fetchone()[0]
             conn.close()
 
-            context.user_data['round'] = min(round_count + 1, 6)  # Максимум 6 раундов
+            context.user_data['count_round'] = round_count  # Максимум 6 раундов
 
             await update.message.reply_text(
-                f"✅ Игра #{game_number} загружена!\n"
-                f"Продолжаем с раунда {context.user_data['round']}"
+                f"✅ Игровая сессия #{game_number} загружена!\n"
+                f"Сыграно тем {context.user_data['count_round']}"
             )
 
             # Показываем темы для текущего раунда
@@ -259,11 +261,11 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Определяем категорию для раунда
-    if round_number <= 2:
-        category = 'match'
+    if round_number == 1 or 3:
+        category = 'owl'
         theme_type = 'match'
-    elif round_number <= 4:
-        category = 'different'
+    elif round_number == 2 or 4:
+        category = 'lark'
         theme_type = 'different'
     else:
         category = 'blitz'
@@ -358,7 +360,7 @@ def main():
     """Основная функция запуска бота"""
     completion_bd.init_db()
 
-    application = Application.builder().token("ВАШ_ТОКЕН_ЗДЕСЬ").build()
+    application = Application.builder().token("8481141708:AAHBtJWBC6SqZYjpMWHEpXmYLpDi5Hv2BTw").build()
 
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))

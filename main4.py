@@ -254,7 +254,7 @@ async def handle_continue_game(update: Update, context: ContextTypes.DEFAULT_TYP
     """Начало процесса продолжения сессии"""
     await update.message.reply_text(
         "Введите номер сессии для продолжения (например: 42):\n"
-        "Или отправьте /cancel для отмены"
+        "Или отправьте /cancel для отмена"
     )
     context.user_data['waiting_for_game_number'] = True
 
@@ -337,15 +337,26 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_id = context.chat_data.get('game_id')
 
     if not game_id:
-        await update.message.reply_text("Ошибка: сессия не инициализирована. Используйте /start")
+        # Пытаемся отправить сообщение в чат
+        if update.message:
+            await update.message.reply_text("Ошибка: сессия не инициализирована. Используйте /start")
+        elif update.callback_query:
+            await update.callback_query.message.reply_text("Ошибка: сессия не инициализирована. Используйте /start")
         return
 
     if round_number > 6:
-        await update.message.reply_text(
-            "🎉 Игра завершена! Спасибо за участие!\n\n"
-            "Хотите сыграть еще раз?\n"
-            "Используйте /start для начала новой сессии."
-        )
+        if update.message:
+            await update.message.reply_text(
+                "🎉 Игра завершена! Спасибо за участие!\n\n"
+                "Хотите сыграть еще раз?\n"
+                "Используйте /start для начала новой сессии."
+            )
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(
+                "🎉 Игра завершена! Спасибо за участие!\n\n"
+                "Хотите сыграть еще раз?\n"
+                "Используйте /start для начала новой сессии."
+            )
         context.user_data['session_active'] = False
         return
 
@@ -368,11 +379,18 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Проверяем достаточно ли тем
     if len(themes) < required_themes:
-        await update.message.reply_text(
-            f"⚠️ Недостаточно уникальных тем для этого раунда!\n"
-            f"Нужно {required_themes}, доступно {len(themes)}\n\n"
-            "Пожалуйста, начните новую сессию, чтобы получить новые темы."
-        )
+        if update.message:
+            await update.message.reply_text(
+                f"⚠️ Недостаточно уникальных тем для этого раунда!\n"
+                f"Нужно {required_themes}, доступно {len(themes)}\n\n"
+                "Пожалуйста, начните новую сессию, чтобы получить новые темы."
+            )
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(
+                f"⚠️ Недостаточно уникальных тем для этого раунда!\n"
+                f"Нужно {required_themes}, доступно {len(themes)}\n\n"
+                "Пожалуйста, начните новую сессию, чтобы получить новые темы."
+            )
         return
 
     # Для блиц-раундов
@@ -391,13 +409,22 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         round_types = {3: "третий", 6: "шестой"}
         round_name = round_types.get(round_number, "")
 
-        await update.message.reply_text(
-            f"⚡ {round_name.capitalize()} раунд - Блиц! ⚡\n\n"
-            f"Ваши темы:\n{themes_text}\n\n"
-            f"У вас есть 1 минута на все 6 тем!\n"
-            f"Нажмите кнопку ниже, чтобы начать:",
-            reply_markup=reply_markup
-        )
+        if update.message:
+            await update.message.reply_text(
+                f"⚡ {round_name.capitalize()} раунд - Блиц! ⚡\n\n"
+                f"Ваши темы:\n{themes_text}\n\n"
+                f"У вас есть 1 минута на все 6 тем!\n"
+                f"Нажмите кнопку ниже, чтобы начать:",
+                reply_markup=reply_markup
+            )
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(
+                f"⚡ {round_name.capitalize()} раунд - Блиц! ⚡\n\n"
+                f"Ваши темы:\n{themes_text}\n\n"
+                f"У вас есть 1 минута на все 6 тем!\n"
+                f"Нажмите кнопку ниже, чтобы начать:",
+                reply_markup=reply_markup
+            )
         return
 
     # Для обычных раундов (owl/lark) - показываем выбор темы
@@ -414,10 +441,16 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     type_names = {'owl': "Совы", 'lark': "Жаворонки"}
     type_name = type_names.get(theme_type, "")
 
-    await update.message.reply_text(
-        f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:",
-        reply_markup=reply_markup
-    )
+    if update.message:
+        await update.message.reply_text(
+            f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:",
+            reply_markup=reply_markup
+        )
+    elif update.callback_query:
+        await update.callback_query.message.reply_text(
+            f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:",
+            reply_markup=reply_markup
+        )
 
 
 async def handle_theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -553,9 +586,6 @@ async def handle_next_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['round'] += 1
     else:
         context.user_data['round'] = 2
-
-    # Обновляем сообщение
-    await query.edit_message_text("Переходим к следующему раунду...")
 
     # Показываем темы для следующего раунда
     await show_round_themes(update, context)

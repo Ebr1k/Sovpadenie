@@ -337,7 +337,6 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_id = context.chat_data.get('game_id')
 
     if not game_id:
-        # Пытаемся отправить сообщение в чат
         if update.message:
             await update.message.reply_text("Ошибка: сессия не инициализирована. Используйте /start")
         elif update.callback_query:
@@ -397,9 +396,10 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if category == 'blitz':
         # Сохраняем темы для этого раунда в контексте
         context.user_data['blitz_themes'] = themes
+        context.user_data['blitz_themes_text'] = "\n".join([f"{i + 1}. {theme[1]}" for i, theme in enumerate(themes[:6])])
 
         # Формируем список тем для отображения
-        themes_text = "\n".join([f"{i + 1}. {theme[1]}" for i, theme in enumerate(themes[:6])])
+        themes_text = context.user_data['blitz_themes_text']
 
         # Создаем клавиатуру с одной кнопкой для запуска таймера
         keyboard = [[InlineKeyboardButton("🚀 Запустить таймер (1 мин)", callback_data="start_blitz_timer")]]
@@ -516,6 +516,7 @@ async def handle_blitz_timer_start(update: Update, context: ContextTypes.DEFAULT
 
     # Получаем темы блица из контекста
     blitz_themes = context.user_data.get('blitz_themes', [])
+    themes_text = context.user_data.get('blitz_themes_text', "")
 
     # Записываем каждую тему в регистр
     conn = sqlite3.connect(DB_NAME)
@@ -526,17 +527,20 @@ async def handle_blitz_timer_start(update: Update, context: ContextTypes.DEFAULT
     conn.commit()
     conn.close()
 
-    # Удаляем темы из контекста
+    # Удаляем темы из контекста (но сохраняем текст тем)
     if 'blitz_themes' in context.user_data:
         del context.user_data['blitz_themes']
 
     round_number = context.user_data.get('round', 1)
-    round_names = {3: "третьем", 6: "шестом"}
+    round_names = {3: "третий", 6: "шестой"}
     round_name = round_names.get(round_number, "")
 
+    # Редактируем сообщение, добавляя информацию о запуске таймера, но сохраняя темы
     await query.edit_message_text(
-        text=f"⚡ В {round_name} раунде (Блиц) начался!\n"
-             f"⏳ У вас 1 минута на 6 тем..."
+        text=f"⚡ {round_name.capitalize()} раунд (Блиц) начался!\n\n"
+             f"Ваши темы:\n{themes_text}\n\n"
+             f"⏳ У вас 1 минута на все 6 тем...",
+        parse_mode='HTML'
     )
 
     # Запускаем таймер - передаем chat_id и game_id

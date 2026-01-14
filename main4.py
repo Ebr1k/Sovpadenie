@@ -20,7 +20,7 @@ def get_user_current_game(chat_id, username):
 
 
 def create_new_game(username):
-    """Создать новую игру"""
+    """Создать новую игровую сессию"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
@@ -29,7 +29,7 @@ def create_new_game(username):
     max_number = cursor.fetchone()[0]
     new_game_number = 1 if max_number is None else max_number + 1
 
-    # Создаем новую игру
+    # Создаем новую игровую сессию
     cursor.execute("INSERT INTO Games (game_number, username) VALUES (?, ?)",
                    (new_game_number, username))
     game_id = cursor.lastrowid
@@ -64,17 +64,36 @@ def get_theme_name(theme_id, category):
     return result[0] if result else None
 
 
-def get_themes_for_game(game_id, category):
-    """Получить темы для конкретной игры (учитывая уже использованные)"""
+def get_themes_for_game_session(game_id, category):
+    """Получить темы для конкретной игровой сессии (учитывая уже использованные ВО ВСЕХ играх этого пользователя)"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Получаем ID уже использованных тем в этой игре для конкретной категории
+    # Получаем username по game_id
+    cursor.execute("SELECT username FROM Games WHERE id = ?", (game_id,))
+    result = cursor.fetchone()
+    if not result:
+        conn.close()
+        return []
+
+    username = result[0]
+
+    # Получаем ID всех игр этого пользователя
+    cursor.execute("SELECT id FROM Games WHERE username = ?", (username,))
+    user_game_ids = [row[0] for row in cursor.fetchall()]
+
+    if not user_game_ids:
+        conn.close()
+        return []
+
+    # Получаем ВСЕ использованные темы этого пользователя для указанной категории
     column_name = f"{category}_id"
+    placeholders = ','.join(['?' for _ in user_game_ids])
+
     cursor.execute(f"""
         SELECT {column_name} FROM register 
-        WHERE game_id = ? AND {column_name} IS NOT NULL
-    """, (game_id,))
+        WHERE game_id IN ({placeholders}) AND {column_name} IS NOT NULL
+    """, user_game_ids)
 
     # Собираем список использованных ID
     used_themes = [row[0] for row in cursor.fetchall()]
@@ -91,39 +110,40 @@ def get_themes_for_game(game_id, category):
         conn.close()
         return []
 
-    # Формируем условие для исключения использованных тем
-    exclude_condition = ""
-    params = []
-
-    if used_themes:
-        placeholders = ','.join(['?' for _ in used_themes])
-        exclude_condition = f"AND id NOT IN ({placeholders})"
-        params.extend(used_themes)
-
     themes = []
 
     # Для категорий owl и lark
     if category in ['owl', 'lark']:
-        # ПЕРВЫЙ ЗАПРОС: случайная НЕсложная тема
-        query1 = f"""
-            SELECT id, theme, difficult
-            FROM {table_name}
-            WHERE difficult = 0 {exclude_condition}
-            ORDER BY RANDOM()
-            LIMIT 1
-        """
+        # Ищем несложную тему, не использованную ранее
+        if used_themes:
+            used_placeholders = ','.join(['?' for _ in used_themes])
+            query1 = f"""
+                SELECT id, theme, difficult
+                FROM {table_name}
+                WHERE difficult = 0 AND id NOT IN ({used_placeholders})
+                ORDER BY RANDOM()
+                LIMIT 1
+            """
+            cursor.execute(query1, used_themes)
+        else:
+            query1 = f"""
+                SELECT id, theme, difficult
+                FROM {table_name}
+                WHERE difficult = 0
+                ORDER BY RANDOM()
+                LIMIT 1
+            """
+            cursor.execute(query1)
 
-        cursor.execute(query1, params)
         theme1 = cursor.fetchone()
 
         if theme1:
             themes.append(theme1)
 
-            # ВТОРОЙ ЗАПРОС: случайная любая тема, но не такая же как первая
-            second_params = params.copy()
-            second_params.append(theme1[0])  # Добавляем ID первой темы
+            # Ищем любую тему, не использованную ранее и не такую же как первая
+            second_excluded = used_themes + [theme1[0]]
+            second_placeholders = ','.join(['?' for _ in second_excluded])
 
-            second_placeholders = ','.join(['?' for _ in second_params])
             query2 = f"""
                 SELECT id, theme, difficult
                 FROM {table_name}
@@ -131,8 +151,7 @@ def get_themes_for_game(game_id, category):
                 ORDER BY RANDOM()
                 LIMIT 1
             """
-
-            cursor.execute(query2, second_params)
+            cursor.execute(query2, second_excluded)
             theme2 = cursor.fetchone()
 
             if theme2:
@@ -140,27 +159,26 @@ def get_themes_for_game(game_id, category):
 
     # Для категории blitz
     elif category == 'blitz':
-        # Один запрос на 6 случайных тем
-        params.append(6)  # Добавляем лимит
-
+        # Получаем 6 случайных тем, не использованных ранее
         if used_themes:
-            placeholders = ','.join(['?' for _ in used_themes])
+            used_placeholders = ','.join(['?' for _ in used_themes])
             query = f"""
                 SELECT id, theme, difficult
                 FROM {table_name}
-                WHERE id NOT IN ({placeholders})
+                WHERE id NOT IN ({used_placeholders})
                 ORDER BY RANDOM()
-                LIMIT ?
+                LIMIT 6
             """
+            cursor.execute(query, used_themes)
         else:
             query = f"""
                 SELECT id, theme, difficult
                 FROM {table_name}
                 ORDER BY RANDOM()
-                LIMIT ?
+                LIMIT 6
             """
+            cursor.execute(query)
 
-        cursor.execute(query, params)
         themes = cursor.fetchall()
 
     conn.close()
@@ -186,45 +204,46 @@ def add_theme_to_game(game_id, theme_id, theme_type):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало работы с ботом - выбор: новая игра или продолжить"""
+    """Начало работы с ботом - выбор: новая игровая сессия или продолжить"""
     username = update.effective_user.username or str(update.effective_user.id)
     context.user_data['username'] = username
 
-    # Проверяем есть ли активные игры у пользователя
-    active_game = get_user_current_game(update.effective_chat.id, username)
-
     keyboard = [
-        ["🎮 Новая игра"],
-        ["▶️ Продолжить игру"],
-        ["📊 Мои игры"]
+        ["🎮 Новая игровая сессия"],
+        ["▶️ Продолжить сессию"],
+        ["📊 Мои сессии"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
     await update.message.reply_text(
         "Добро пожаловать в игру 'Совпадение'!\n"
+        "Каждая сессия состоит из 6 раундов.\n"
+        "Темы не повторяются в рамках всех ваших сессий!\n\n"
         "Выберите действие:",
         reply_markup=reply_markup
     )
 
 
 async def handle_new_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Создание новой игры"""
+    """Создание новой игровой сессии"""
     username = context.user_data.get('username')
     if not username:
         await update.message.reply_text("Пожалуйста, сначала используйте /start")
         return
 
-    # Создаем новую игру
+    # Создаем новую игровую сессию
     game_number, game_id = create_new_game(username)
 
     # Сохраняем данные в контексте чата
     context.chat_data['game_id'] = game_id
     context.chat_data['game_number'] = game_number
     context.user_data['round'] = 1
+    context.user_data['session_active'] = True
 
     await update.message.reply_text(
-        f"🎉 Игра #{game_number} создана!\n"
-        f"Запомните номер игры для продолжения: {game_number}\n\n"
+        f"🎉 Игровая сессия #{game_number} создана!\n"
+        f"Запомните номер сессии для продолжения: {game_number}\n"
+        f"Темы не будут повторяться с предыдущими вашими сессиями.\n\n"
         "Начинаем первый раунд!"
     )
 
@@ -232,16 +251,16 @@ async def handle_new_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_continue_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало процесса продолжения игры"""
+    """Начало процесса продолжения сессии"""
     await update.message.reply_text(
-        "Введите номер игры для продолжения (например: 42):\n"
+        "Введите номер сессии для продолжения (например: 42):\n"
         "Или отправьте /cancel для отмены"
     )
     context.user_data['waiting_for_game_number'] = True
 
 
 async def handle_game_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка введенного номера игры"""
+    """Обработка введенного номера сессии"""
     if not context.user_data.get('waiting_for_game_number'):
         return
 
@@ -249,46 +268,39 @@ async def handle_game_number_input(update: Update, context: ContextTypes.DEFAULT
         game_number = int(update.message.text)
         username = context.user_data.get('username')
 
-        # Ищем игру
+        # Ищем сессию
         game_id = get_game_by_number(game_number, username)
 
         if game_id:
-            # Сохраняем данные игры
+            # Сохраняем данные сессии
             context.chat_data['game_id'] = game_id
             context.chat_data['game_number'] = game_number
-
-            # Определяем текущий раунд (по количеству записей в register)
-            conn = sqlite3.connect(DB_NAME)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM register WHERE game_id = ?", (game_id,))
-            round_count = cursor.fetchone()[0]
-            conn.close()
-
-            # Устанавливаем текущий раунд (следующий после сыгранных)
-            context.user_data['round'] = min(round_count + 1, 7)
+            context.user_data['round'] = 1  # Всегда начинаем новую игру с 1 раунда
+            context.user_data['session_active'] = True
 
             await update.message.reply_text(
                 f"✅ Игровая сессия #{game_number} загружена!\n"
-                f"Сыграно раундов {round_count}. Продолжаем с раунда {context.user_data['round']}."
+                f"Начинаем новую игру из 6 раундов.\n"
+                f"Темы не будут повторяться с предыдущими вашими сессиями."
             )
 
-            # Показываем темы для текущего раунда
+            # Показываем темы для первого раунда
             await show_round_themes(update, context)
         else:
             await update.message.reply_text(
-                f"❌ Игра #{game_number} не найдена или у вас нет к ней доступа.\n"
+                f"❌ Сессия #{game_number} не найдена или у вас нет к ней доступа.\n"
                 "Проверьте номер и попробуйте снова."
             )
 
     except ValueError:
-        await update.message.reply_text("Пожалуйста, введите корректный номер игры (только цифры)")
+        await update.message.reply_text("Пожалуйста, введите корректный номер сессии (только цифры)")
 
     # Сбрасываем состояние ожидания
     context.user_data['waiting_for_game_number'] = False
 
 
 async def handle_my_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать все игры пользователя"""
+    """Показать все сессии пользователя"""
     username = context.user_data.get('username')
     if not username:
         await update.message.reply_text("Пожалуйста, сначала используйте /start")
@@ -297,10 +309,13 @@ async def handle_my_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT game_number, COUNT(r.id) as rounds_played 
+        SELECT g.game_number, 
+               COUNT(DISTINCT CASE WHEN r.owl_id IS NOT NULL THEN 1 END) +
+               COUNT(DISTINCT CASE WHEN r.lark_id IS NOT NULL THEN 1 END) +
+               COUNT(DISTINCT CASE WHEN r.blitz_id IS NOT NULL THEN 1 END) as themes_played
         FROM Games g 
         LEFT JOIN register r ON g.id = r.game_id 
-        WHERE username = ? 
+        WHERE g.username = ? 
         GROUP BY g.id 
         ORDER BY g.id DESC 
         LIMIT 10
@@ -310,23 +325,28 @@ async def handle_my_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if games:
-        games_list = "\n".join([f"Игра #{num}: {rounds} раундов" for num, rounds in games])
-        await update.message.reply_text(f"Ваши последние игры:\n{games_list}")
+        games_list = "\n".join([f"Сессия #{num}: сыграно {themes} тем" for num, themes in games])
+        await update.message.reply_text(f"Ваши последние сессии:\n{games_list}")
     else:
-        await update.message.reply_text("У вас пока нет сохраненных игр.")
+        await update.message.reply_text("У вас пока нет сохраненных сессий.")
 
 
 async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать темы для текущего раунда (с привязкой к игре)"""
+    """Показать темы для текущего раунда"""
     round_number = context.user_data.get('round', 1)
     game_id = context.chat_data.get('game_id')
 
     if not game_id:
-        await update.message.reply_text("Ошибка: игра не инициализирована. Используйте /start")
+        await update.message.reply_text("Ошибка: сессия не инициализирована. Используйте /start")
         return
 
     if round_number > 6:
-        await update.message.reply_text("🎉 Игра завершена! Спасибо за участие!")
+        await update.message.reply_text(
+            "🎉 Игра завершена! Спасибо за участие!\n\n"
+            "Хотите сыграть еще раз?\n"
+            "Используйте /start для начала новой сессии."
+        )
+        context.user_data['session_active'] = False
         return
 
     # Определяем категорию для раунда
@@ -343,13 +363,16 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme_type = 'blitz'
         required_themes = 6
 
-    # Получаем темы для конкретной игры
-    themes = get_themes_for_game(game_id, category)
+    # Получаем темы для текущей игровой сессии
+    themes = get_themes_for_game_session(game_id, category)
 
     # Проверяем достаточно ли тем
     if len(themes) < required_themes:
         await update.message.reply_text(
-            f"Недостаточно доступных тем для этого раунда! Нужно {required_themes}, есть {len(themes)}")
+            f"⚠️ Недостаточно уникальных тем для этого раунда!\n"
+            f"Нужно {required_themes}, доступно {len(themes)}\n\n"
+            "Пожалуйста, начните новую сессию, чтобы получить новые темы."
+        )
         return
 
     # Для блиц-раундов
@@ -398,7 +421,7 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка выбора темы (с привязкой к игре)"""
+    """Обработка выбора темы"""
     query = update.callback_query
     await query.answer()
 
@@ -406,10 +429,10 @@ async def handle_theme_selection(update: Update, context: ContextTypes.DEFAULT_T
     theme_id = int(data_parts[1])
     theme_type = data_parts[2]  # owl, lark или blitz
 
-    # Получаем ID текущей игры
+    # Получаем ID текущей сессии
     game_id = context.chat_data.get('game_id')
     if not game_id:
-        await query.edit_message_text("Ошибка: игра не найдена")
+        await query.edit_message_text("Ошибка: сессия не найдена")
         return
 
     # Получаем название темы
@@ -422,7 +445,7 @@ async def handle_theme_selection(update: Update, context: ContextTypes.DEFAULT_T
     type_names = {'owl': "Сов", 'lark': "Жаворонков"}
     type_name = type_names.get(theme_type, "")
 
-    # Добавляем тему в регистр игры
+    # Добавляем тему в регистр сессии
     add_theme_to_game(game_id, theme_id, theme_type)
 
     if theme_name:
@@ -435,11 +458,16 @@ async def handle_theme_selection(update: Update, context: ContextTypes.DEFAULT_T
     else:
         await query.edit_message_text(text=f"Выбрана тема! У вас 1 минута...")
 
-    # Запускаем таймер
+    # Запускаем таймер - передаем chat_id и game_id
     context.job_queue.run_once(
-        callback=end_round,
+        callback=end_round_callback,
         when=60,
-        data=query.message.chat_id
+        data={
+            'chat_id': query.message.chat_id,
+            'game_id': game_id,
+            'round_number': round_number,
+            'theme_type': theme_type
+        }
     )
 
 
@@ -450,7 +478,7 @@ async def handle_blitz_timer_start(update: Update, context: ContextTypes.DEFAULT
 
     game_id = context.chat_data.get('game_id')
     if not game_id:
-        await query.edit_message_text("Ошибка: игра не найдена")
+        await query.edit_message_text("Ошибка: сессия не найдена")
         return
 
     # Получаем темы блица из контекста
@@ -478,36 +506,39 @@ async def handle_blitz_timer_start(update: Update, context: ContextTypes.DEFAULT
              f"⏳ У вас 1 минута на 6 тем..."
     )
 
-    # Запускаем таймер
+    # Запускаем таймер - передаем chat_id и game_id
     context.job_queue.run_once(
-        callback=end_round,
+        callback=end_round_callback,
         when=60,
-        data=query.message.chat_id
+        data={
+            'chat_id': query.message.chat_id,
+            'game_id': game_id,
+            'round_number': round_number,
+            'theme_type': 'blitz'
+        }
     )
 
 
-async def end_round(context: ContextTypes.DEFAULT_TYPE):
-    """Завершение раунда"""
+async def end_round_callback(context: ContextTypes.DEFAULT_TYPE):
+    """Колбэк для завершения раунда - вызывается по таймеру"""
     job = context.job
-    chat_id = job.data
+    data = job.data
 
-    # Получаем context для этого чата
-    # В реальном боте нужно получить контекст чата, но здесь упрощенно
-    # Вместо этого будем использовать bot_data для хранения состояний
+    chat_id = data['chat_id']
+    game_id = data['game_id']
+    round_number = data['round_number']
+    theme_type = data['theme_type']
 
-    # Используем application.context для доступа к данным
-    application = context.application
-    chat_context = application.chat_data.get(chat_id, {})
-
-    # Увеличиваем раунд в user_data (упрощенно)
-    # В реальности нужно получить user_data для пользователя в этом чате
-
+    # Отправляем сообщение о завершении времени
     keyboard = [[InlineKeyboardButton("Следующий раунд", callback_data="next_round")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    type_names = {'owl': "Совы", 'lark': "Жаворонки", 'blitz': "Блиц"}
+    type_name = type_names.get(theme_type, "")
+
     await context.bot.send_message(
         chat_id=chat_id,
-        text="⏰ Время вышло!",
+        text=f"⏰ Время вышло! Раунд {round_number} ({type_name}) завершен.",
         reply_markup=reply_markup
     )
 
@@ -523,6 +554,10 @@ async def handle_next_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         context.user_data['round'] = 2
 
+    # Обновляем сообщение
+    await query.edit_message_text("Переходим к следующему раунду...")
+
+    # Показываем темы для следующего раунда
     await show_round_themes(update, context)
 
 
@@ -544,9 +579,9 @@ def main():
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(MessageHandler(filters.Text(["🎮 Новая игра"]), handle_new_game))
-    application.add_handler(MessageHandler(filters.Text(["▶️ Продолжить игру"]), handle_continue_game))
-    application.add_handler(MessageHandler(filters.Text(["📊 Мои игры"]), handle_my_games))
+    application.add_handler(MessageHandler(filters.Text(["🎮 Новая игровая сессия"]), handle_new_game))
+    application.add_handler(MessageHandler(filters.Text(["▶️ Продолжить сессию"]), handle_continue_game))
+    application.add_handler(MessageHandler(filters.Text(["📊 Мои сессии"]), handle_my_games))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_game_number_input))
     application.add_handler(CallbackQueryHandler(handle_theme_selection, pattern="^theme_"))
     application.add_handler(CallbackQueryHandler(handle_next_round, pattern="^next_round"))

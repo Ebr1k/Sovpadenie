@@ -308,11 +308,11 @@ async def handle_my_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
+
+    # Исправленный запрос для правильного подсчета тем
     cursor.execute("""
         SELECT g.game_number, 
-               COUNT(DISTINCT CASE WHEN r.owl_id IS NOT NULL THEN 1 END) +
-               COUNT(DISTINCT CASE WHEN r.lark_id IS NOT NULL THEN 1 END) +
-               COUNT(DISTINCT CASE WHEN r.blitz_id IS NOT NULL THEN 1 END) as themes_played
+               COUNT(r.id) as themes_played
         FROM Games g 
         LEFT JOIN register r ON g.id = r.game_id 
         WHERE g.username = ? 
@@ -376,27 +376,33 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Получаем темы для текущей игровой сессии
     themes = get_themes_for_game_session(game_id, category)
 
-    # Проверяем достаточно ли тем
+    # Если тем недостаточно, переходим к следующему раунду
     if len(themes) < required_themes:
+        context.user_data['round'] = round_number + 1
+
         if update.message:
             await update.message.reply_text(
-                f"⚠️ Недостаточно уникальных тем для этого раунда!\n"
+                f"⚠️ В раунде {round_number} недостаточно уникальных тем!\n"
                 f"Нужно {required_themes}, доступно {len(themes)}\n\n"
-                "Пожалуйста, начните новую сессию, чтобы получить новые темы."
+                f"Пропускаем этот раунд и переходим к следующему..."
             )
         elif update.callback_query:
             await update.callback_query.message.reply_text(
-                f"⚠️ Недостаточно уникальных тем для этого раунда!\n"
+                f"⚠️ В раунде {round_number} недостаточно уникальных тем!\n"
                 f"Нужно {required_themes}, доступно {len(themes)}\n\n"
-                "Пожалуйста, начните новую сессию, чтобы получить новые темы."
+                f"Пропускаем этот раунд и переходим к следующему..."
             )
+
+        # Рекурсивно вызываем себя для следующего раунда
+        await show_round_themes(update, context)
         return
 
     # Для блиц-раундов
     if category == 'blitz':
         # Сохраняем темы для этого раунда в контексте
         context.user_data['blitz_themes'] = themes
-        context.user_data['blitz_themes_text'] = "\n".join([f"{i + 1}. {theme[1]}" for i, theme in enumerate(themes[:6])])
+        context.user_data['blitz_themes_text'] = "\n".join(
+            [f"{i + 1}. {theme[1]}" for i, theme in enumerate(themes[:6])])
 
         # Формируем список тем для отображения
         themes_text = context.user_data['blitz_themes_text']
@@ -566,18 +572,30 @@ async def end_round_callback(context: ContextTypes.DEFAULT_TYPE):
     round_number = data['round_number']
     theme_type = data['theme_type']
 
-    # Отправляем сообщение о завершении времени
-    keyboard = [[InlineKeyboardButton("Следующий раунд", callback_data="next_round")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     type_names = {'owl': "Совы", 'lark': "Жаворонки", 'blitz': "Блиц"}
     type_name = type_names.get(theme_type, "")
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"⏰ Время вышло! Раунд {round_number} ({type_name}) завершен.",
-        reply_markup=reply_markup
-    )
+    # Если это последний раунд (6-й), показываем кнопку "Завершить игру"
+    if round_number == 6:
+        keyboard = [[InlineKeyboardButton("🏁 Завершить игру", callback_data="finish_game")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⏰ Время вышло! Раунд {round_number} ({type_name}) завершен.\n\n"
+                 f"🎉 Поздравляем! Вы завершили все 6 раундов игры!",
+            reply_markup=reply_markup
+        )
+    else:
+        # Иначе показываем кнопку "Следующий раунд"
+        keyboard = [[InlineKeyboardButton("➡️ Следующий раунд", callback_data="next_round")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⏰ Время вышло! Раунд {round_number} ({type_name}) завершен.",
+            reply_markup=reply_markup
+        )
 
 
 async def handle_next_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -593,6 +611,22 @@ async def handle_next_round(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Показываем темы для следующего раунда
     await show_round_themes(update, context)
+
+
+async def handle_finish_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Завершение игры после 6 раундов"""
+    query = update.callback_query
+    await query.answer()
+
+    # Получаем номер сессии
+    game_number = context.chat_data.get('game_number', '?')
+
+    await query.edit_message_text(
+        text=f"🎉 Игра в сессии #{game_number} завершена!\n\n"
+             f"Спасибо за участие!\n\n"
+             f"Хотите сыграть еще раз?\n"
+             f"Используйте /start для выбора действий."
+    )
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -620,6 +654,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_theme_selection, pattern="^theme_"))
     application.add_handler(CallbackQueryHandler(handle_next_round, pattern="^next_round"))
     application.add_handler(CallbackQueryHandler(handle_blitz_timer_start, pattern="^start_blitz_timer"))
+    application.add_handler(CallbackQueryHandler(handle_finish_game, pattern="^finish_game"))
 
     application.run_polling()
 

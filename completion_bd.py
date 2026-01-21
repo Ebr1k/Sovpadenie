@@ -109,6 +109,5 @@ def insert_data(table_name, theme_col, mark_col, diff_col):
                 )
             except sqlite3.IntegrityError:
                 continue
-    # Сохраняем изменения и закрываем соединение
     conn.commit()
     conn.close()

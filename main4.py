@@ -5,7 +5,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 import asyncio
 import completion_bd
 
-DB_NAME = "sovpadenie_main.db"
+DB_NAME = "sovpadenie.db"
 
 #Получить активную игру пользователя
 def get_user_current_game(chat_id, username):
@@ -190,6 +190,18 @@ def add_theme_to_game(game_id, theme_id, theme_type):
     conn.commit()
     conn.close()
 
+def split_text_for_button(text, max_length=17):
+    """Разделяет текст для кнопки"""
+    if len(text) <= max_length:
+        return text
+
+    # Находим место для разрыва
+    break_point = text.rfind(' ', 0, max_length)
+    if break_point == -1:
+        break_point = max_length
+
+    return text[:break_point] + "\n" + text[break_point:].strip()
+
 #Начало работы с ботом - выбор: новая игровая сессия или продолжить
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or str(update.effective_user.id)
@@ -370,7 +382,7 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Пропускаем этот раунд и переходим к следующему..."
             )
 
-        # Рекурсивный вызыов себя для следующего раунда
+        # Рекурсивный вызов себя для следующего раунда
         await show_round_themes(update, context)
         return
 
@@ -410,6 +422,8 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+
+
     keyboard = [
         [
             InlineKeyboardButton(themes[0][1], callback_data=f"theme_{themes[0][0]}_{theme_type}"),
@@ -425,12 +439,12 @@ async def show_round_themes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.message:
         await update.message.reply_text(
-            f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:",
+            f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:\n1️⃣ {themes[0][1]}\n2️⃣ {themes[1][1]}",
             reply_markup=reply_markup
         )
     elif update.callback_query:
         await update.callback_query.message.reply_text(
-            f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:",
+            f"🔄 {round_name.capitalize()} раунд - {type_name}\nВыберите тему:\n1️⃣ {themes[0][1]}\n2️⃣ {themes[1][1]}",
             reply_markup=reply_markup
         )
 

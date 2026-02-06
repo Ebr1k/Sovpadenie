@@ -2,7 +2,7 @@ import sqlite3
 import os
 import pandas as pd
 import openpyxl
-DB_NAME = "sovpadenie_main.db"
+DB_NAME = "sovpadenie.db"
 def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
